@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "onehux-sso"
+version = "0.1.0"
+description = "Django SDK for OneHux Accounts SSO (Authorization Code + PKCE, real hosted login page, RP-initiated logout)."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = [
+    "Django>=4.2",
+    "requests>=2.31",
+]
+
+[project.urls]
+Homepage = "https://accounts.onehux.com"
+Documentation = "https://accounts.onehux.com/dashboard/docs/integrate/backend/django"
+
+[tool.setuptools.packages.find]
+where = ["src"]
