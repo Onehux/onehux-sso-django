@@ -5,7 +5,7 @@ you mount this (e.g. https://yourapp.example.com/auth/callback/)."""
 
 from django.urls import path
 
-from .views import CallbackView, LoginView, LogoutView, UserInfoView
+from .views import BackchannelLogoutView, CallbackView, LoginView, LogoutView, UserInfoView
 
 app_name = "onehux_sso"
 
@@ -14,4 +14,5 @@ urlpatterns = [
     path("callback/", CallbackView.as_view(), name="callback"),
     path("logout/", LogoutView.as_view(), name="logout"),
     path("userinfo/", UserInfoView.as_view(), name="userinfo"),
+    path("backchannel-logout/", BackchannelLogoutView.as_view(), name="backchannel_logout"),
 ]

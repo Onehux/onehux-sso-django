@@ -19,10 +19,18 @@ import secrets
 from dataclasses import dataclass
 from urllib.parse import urlencode
 
+import jwt
 import requests
 
 from .conf import get_setting
-from .exceptions import InvalidStateError, TokenExchangeError, TokenExpiredError
+from .exceptions import (
+    InvalidLogoutTokenError,
+    InvalidStateError,
+    TokenExchangeError,
+    TokenExpiredError,
+)
+
+LOGOUT_EVENT_CLAIM_KEY = "http://schemas.openid.net/event/backchannel-logout"
 
 
 def _b64url(data: bytes) -> str:
@@ -176,6 +184,55 @@ class OneHuxClient:
                 "Send the user back through OneHuxClient.start_authorization()."
             )
         return response.json()
+
+    def extract_sid_from_id_token(self, *, id_token: str) -> str | None:
+        """
+        Pull the `sid` claim out of `id_token` WITHOUT verifying its signature — this package
+        has no way to verify an id_token's signature (OneHux Accounts signs it with a server-
+        only key never shared with any client — the backend repo's own oauth.services
+        .build_jwt() docstring flags this as a deliberate Phase-1 gap), and doesn't need to for
+        this purpose: the token was retrieved directly from a client_secret-authenticated POST
+        to /api/v1/oauth/token/ over TLS, not from an untrusted redirect parameter, so trusting
+        its contents here (indexing this local session for a later logout_token match) is
+        standard OIDC RP practice. Returns None if the token doesn't decode or has no sid claim
+        — a missing index entry only means a future logout_token can't be matched to this
+        session, never a security exposure (see BackchannelLogoutView's own docstring).
+        """
+        try:
+            payload = jwt.decode(id_token, options={"verify_signature": False})
+        except jwt.PyJWTError:
+            return None
+        return payload.get("sid")
+
+    def verify_logout_token(self, *, logout_token: str) -> dict:
+        """
+        Real OIDC Back-Channel Logout validation (spec §2.6), HS256-verified against
+        ONEHUX_SSO['BACKCHANNEL_LOGOUT_SIGNING_SECRET'] — the dedicated secret shown once at
+        backchannel_logout_uri registration time, deliberately NOT this client's own
+        CLIENT_SECRET (the backend cannot read that back to sign anything with it — see the
+        backend repo's README.md ADR-074). Raises InvalidLogoutTokenError on any validation
+        failure — signature, aud, missing/malformed events claim, a present nonce claim
+        (forbidden per spec), or a missing sub/sid — the caller (BackchannelLogoutView) turns
+        that into the spec-required HTTP 400.
+        """
+        secret = get_setting("BACKCHANNEL_LOGOUT_SIGNING_SECRET")
+        try:
+            payload = jwt.decode(
+                logout_token, secret, algorithms=["HS256"], audience=self.client_id,
+            )
+        except jwt.PyJWTError as exc:
+            raise InvalidLogoutTokenError(f"logout_token signature/claims invalid: {exc}")
+
+        if "nonce" in payload:
+            raise InvalidLogoutTokenError("logout_token MUST NOT contain a nonce claim.")
+        events = payload.get("events")
+        if not isinstance(events, dict) or LOGOUT_EVENT_CLAIM_KEY not in events:
+            raise InvalidLogoutTokenError(
+                f"logout_token is missing the required events claim ({LOGOUT_EVENT_CLAIM_KEY})."
+            )
+        if not payload.get("sub") and not payload.get("sid"):
+            raise InvalidLogoutTokenError("logout_token must contain a sub claim, a sid claim, or both.")
+        return payload
 
     def build_logout_url(self, *, state: str | None = None) -> str:
         """Build the RP-initiated logout redirect (README.md ADR-070, backend repo):

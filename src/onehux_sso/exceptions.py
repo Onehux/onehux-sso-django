@@ -35,3 +35,11 @@ class TokenExpiredError(OneHuxSSOError):
     package's build, not a bug in this client. Callers must catch this and route the user back
     through OneHuxClient.build_authorization_redirect_url() for a fresh login; there is no
     silent-refresh path to fall back to."""
+
+
+class InvalidLogoutTokenError(OneHuxSSOError):
+    """An incoming POST to BackchannelLogoutView failed real OIDC Back-Channel Logout
+    validation (spec: openid-connect-backchannel-1_0.html §2.6) — bad/missing signature, wrong
+    aud/iss, missing/malformed events claim, a present nonce claim (forbidden), or a missing
+    sub/sid. The view responds 400 for any of these, per spec, rather than a 500 — a forged or
+    malformed request is an expected adversarial input on a public endpoint, not a server bug."""

@@ -99,17 +99,46 @@ claims = client.get_userinfo(access_token=tokens.access_token)
 logout_url = client.build_logout_url()
 ```
 
-## Logging out at the IdP doesn't proactively notify this app — this is real, not a bug
+## Logging out — what actually happens, and how to hear about it immediately
 
-RP-initiated logout (`client.build_logout_url()` / `/auth/logout/`) genuinely, immediately ends
-the shared platform-wide session — confirmed by direct trace against the backend. But if the
-user instead logs out of a *different* app, or directly at `accounts.onehux.com`, this app has
-no way to find out proactively: OneHux Accounts does not implement OIDC Back-Channel Logout.
-This app's own local session (`request.session[SESSION_ACCESS_TOKEN_KEY]`) will keep showing
-"signed in" until its next real call to `/userinfo` fails with `TokenExpiredError` — bounded by
-the access token's 15-minute lifetime, never sooner. Don't treat a locally-held session as a
-live signal of the IdP's true logout state; treat it as valid only up to the token's own
-lifetime, same discipline as the no-refresh-token note below.
+Two distinct logout paths reach the platform's identical underlying session-revocation call
+(`POST /api/v1/sessions/me/logout/`), and OneHux Accounts genuinely, immediately revokes the
+platform-wide session either way — this was traced directly against the backend, not assumed.
+What differs is how *this app* finds out:
+
+- **RP-initiated logout** — the user clicks "log out" inside this app itself
+  (`client.build_logout_url()` / `/auth/logout/`). This app already knows: it's the one that
+  cleared `request.session[SESSION_ACCESS_TOKEN_KEY]` and drove the redirect. Nothing further
+  to do.
+- **IdP-initiated logout** — the user logs out of a *different* app, or directly at
+  `accounts.onehux.com/dashboard`. The platform-wide session is revoked immediately and
+  correctly, exactly the same as the RP-initiated case — but this app only finds out if it's
+  listening for it.
+
+**OneHux Accounts implements real OIDC Back-Channel Logout** (spec:
+[openid-connect-backchannel-1_0](https://openid.net/specs/openid-connect-backchannel-1_0.html))
+to close that gap: `BackchannelLogoutView` receives a signed `logout_token` POST the instant any
+session tied to this app is revoked, anywhere, and clears the matching local Django session
+immediately — not on the next stale `/userinfo` call.
+
+**To turn this on:**
+
+1. Mount the package's URLs as shown in Setup above — `BackchannelLogoutView` is already
+   included at `/auth/backchannel-logout/` (adjust for whatever prefix you mounted at).
+2. Register that exact URL with OneHux:
+   ```
+   PATCH /api/v1/applications/{id}/backchannel-logout/
+   { "backchannel_logout_uri": "https://yourapp.example.com/auth/backchannel-logout/" }
+   ```
+   The response includes `backchannel_logout_secret` **exactly once** — this is a dedicated
+   signing secret, deliberately **not** your `CLIENT_SECRET` (the backend stores that only as a
+   one-way hash and can never read it back to sign anything with it).
+3. Set `ONEHUX_SSO['BACKCHANNEL_LOGOUT_SIGNING_SECRET']` to that value.
+
+Without steps 1–3, IdP-initiated logout is still real and immediate at the platform level — this
+app just won't hear about it until its own next `/userinfo` call fails with `TokenExpiredError`,
+bounded by the access token's 15-minute lifetime. With them wired up, both logout paths are
+functionally immediate from this app's point of view too.
 
 ## No refresh token today — this is real, not a bug
 
