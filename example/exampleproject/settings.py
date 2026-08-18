@@ -26,7 +26,7 @@ SECRET_KEY = 'django-insecure-cz4*dze(ogp5k7l1w+o8z&gbwr2hv%h&qu9nwj*tkdvs)ykmrv
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1']
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '.trycloudflare.com']
 
 
 # Application definition
@@ -131,6 +131,9 @@ ONEHUX_SSO = {
     'POST_LOGOUT_REDIRECT_URI': 'http://localhost:4181/auth/logged-out/',
     'LOGIN_SUCCESS_REDIRECT': '/',
     'LOGOUT_SUCCESS_REDIRECT': '/',
+    # OIDC Back-Channel Logout (README.md ADR-074, backend repo) — the dedicated secret shown
+    # once by PATCH /api/v1/applications/{id}/backchannel-logout/, NOT ONEHUX_CLIENT_SECRET.
+    'BACKCHANNEL_LOGOUT_SIGNING_SECRET': os.environ.get('ONEHUX_BACKCHANNEL_LOGOUT_SIGNING_SECRET', ''),
 }
 
 

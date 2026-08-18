@@ -37,6 +37,21 @@ class TokenExpiredError(OneHuxSSOError):
     silent-refresh path to fall back to."""
 
 
+class StepUpRequiredError(OneHuxSSOError):
+    """POST /api/v1/oauth/token/ returned {"error": "step_up_required", ...} (README.md
+    ADR-076, backend repo) — the credentials/code were valid, but the platform's device/
+    location trust gate rejected this specific login (password or Google) as coming from an
+    unrecognized device/location. This is NOT a fatal error: OneHuxClient.exchange_code()
+    raises this distinctly from TokenExchangeError so CallbackView can redirect the browser to
+    complete step-up (magic link/email code/passkey) rather than showing a hard failure — the
+    exact same automatic-redirect behavior the platform's own first-party dashboard uses for
+    this identical error."""
+
+    def __init__(self, *, error_description: str):
+        self.error_description = error_description
+        super().__init__(error_description)
+
+
 class InvalidLogoutTokenError(OneHuxSSOError):
     """An incoming POST to BackchannelLogoutView failed real OIDC Back-Channel Logout
     validation (spec: openid-connect-backchannel-1_0.html §2.6) — bad/missing signature, wrong

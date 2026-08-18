@@ -26,6 +26,7 @@ from .conf import get_setting
 from .exceptions import (
     InvalidLogoutTokenError,
     InvalidStateError,
+    StepUpRequiredError,
     TokenExchangeError,
     TokenExpiredError,
 )
@@ -151,6 +152,12 @@ class OneHuxClient:
         )
         body = response.json()
         if not response.ok:
+            if body.get("error") == "step_up_required":
+                # Deliberately distinct from TokenExchangeError: this is a recoverable, expected
+                # mid-login prompt (device/location trust gate), not a failed exchange — the
+                # caller (CallbackView) redirects the browser to complete step-up rather than
+                # showing an error.
+                raise StepUpRequiredError(error_description=body.get("error_description", ""))
             raise TokenExchangeError(
                 error=body.get("error", "unknown_error"),
                 error_description=body.get("error_description", ""),
@@ -163,6 +170,30 @@ class OneHuxClient:
             expires_in=body["expires_in"],
             scope=body["scope"],
         )
+
+    def build_step_up_redirect_url(self, *, code_verifier: str, state: str) -> str:
+        """Build the redirect used when exchange_code() raises StepUpRequiredError (README.md
+        ADR-076, backend repo). Reuses this SAME pending authorization's client_id/redirect_uri/
+        scope/state, and re-derives code_challenge from the already-stored code_verifier (PKCE
+        code_challenge is a pure function of code_verifier, so nothing extra needs to be
+        persisted). Deep-links straight to the real hosted email-OTP step-up page — the exact
+        same URL the platform's own first-party dashboard redirects to for this identical error
+        (backend repo: frontend/src/lib/server/step-up.ts) — rather than the generic /login
+        page, since the platform requires a step-up-caliber method specifically here. The
+        caller MUST NOT discard the pending code_verifier/state before calling this: the
+        browser will land back on this same app's callback shortly with a brand-new code for
+        this same state, and CallbackView needs the still-stored code_verifier to exchange it."""
+        code_challenge = _b64url(hashlib.sha256(code_verifier.encode()).digest())
+        params = {
+            "client_id": self.client_id,
+            "redirect_uri": self.redirect_uri,
+            "code_challenge": code_challenge,
+            "code_challenge_method": "S256",
+            "scope": self.scope,
+            "state": state,
+            "reason": "step_up",
+        }
+        return f"{self.login_base_url}/login/email-otp?{urlencode(params)}"
 
     def get_userinfo(self, *, access_token: str) -> dict:
         """GET {API_BASE_URL}/api/v1/oauth/userinfo/ — real claims (sub, name, email, picture,

@@ -14,7 +14,13 @@ from django.views.decorators.csrf import csrf_exempt
 
 from .client import OneHuxClient
 from .conf import get_setting
-from .exceptions import InvalidLogoutTokenError, InvalidStateError, TokenExchangeError, TokenExpiredError
+from .exceptions import (
+    InvalidLogoutTokenError,
+    InvalidStateError,
+    StepUpRequiredError,
+    TokenExchangeError,
+    TokenExpiredError,
+)
 
 _STATE_SESSION_KEY = "onehux_sso_state"
 _VERIFIER_SESSION_KEY = "onehux_sso_pkce_verifier"
@@ -35,20 +41,31 @@ class LoginView(View):
 
 class CallbackView(View):
     """GET /auth/callback/ — verifies state, exchanges the code, stores the access token in
-    the session, redirects to ONEHUX_SSO['LOGIN_SUCCESS_REDIRECT'] (default '/')."""
+    the session, redirects to ONEHUX_SSO['LOGIN_SUCCESS_REDIRECT'] (default '/').
+
+    On a step_up_required response specifically (README.md ADR-076, backend repo), this view
+    redirects the browser to complete step-up rather than failing — the pending PKCE
+    state/verifier is deliberately NOT cleared in that one case, since the browser will land
+    back on this exact view shortly with a brand-new code for the same state. Every other
+    outcome (success, InvalidStateError, any other TokenExchangeError) clears it exactly as
+    before — this is a narrow, additive branch, not a change to the general discard behavior."""
 
     def get(self, request: HttpRequest) -> HttpResponse:
         code = request.GET.get("code", "")
         state = request.GET.get("state", "")
         error = request.GET.get("error")
         if error:
+            request.session.pop(_STATE_SESSION_KEY, None)
+            request.session.pop(_VERIFIER_SESSION_KEY, None)
             return HttpResponse(
                 f"Sign-in failed: {error} — {request.GET.get('error_description', '')}",
                 status=400,
             )
 
-        expected_state = request.session.pop(_STATE_SESSION_KEY, None)
-        code_verifier = request.session.pop(_VERIFIER_SESSION_KEY, None)
+        # Peeked, not popped: the step_up_required branch below needs these to still be in the
+        # session if it fires. Every other branch pops them explicitly before returning.
+        expected_state = request.session.get(_STATE_SESSION_KEY)
+        code_verifier = request.session.get(_VERIFIER_SESSION_KEY)
 
         client = OneHuxClient.from_settings()
         try:
@@ -56,10 +73,19 @@ class CallbackView(View):
                 code=code, state=state, expected_state=expected_state, code_verifier=code_verifier
             )
         except InvalidStateError as exc:
+            request.session.pop(_STATE_SESSION_KEY, None)
+            request.session.pop(_VERIFIER_SESSION_KEY, None)
             return HttpResponse(str(exc), status=400)
+        except StepUpRequiredError:
+            redirect_url = client.build_step_up_redirect_url(code_verifier=code_verifier, state=state)
+            return HttpResponseRedirect(redirect_url)
         except TokenExchangeError as exc:
+            request.session.pop(_STATE_SESSION_KEY, None)
+            request.session.pop(_VERIFIER_SESSION_KEY, None)
             return HttpResponse(f"{exc.error}: {exc.error_description}", status=400)
 
+        request.session.pop(_STATE_SESSION_KEY, None)
+        request.session.pop(_VERIFIER_SESSION_KEY, None)
         request.session[get_setting("SESSION_ACCESS_TOKEN_KEY")] = tokens.access_token
 
         # OIDC Back-Channel Logout (optional): index this Django session by the OneHux Session
