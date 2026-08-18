@@ -99,6 +99,31 @@ claims = client.get_userinfo(access_token=tokens.access_token)
 logout_url = client.build_logout_url()
 ```
 
+## Public application launcher
+
+`GET /api/v1/organizations/{org_slug}/public-applications/` is a real, public, unauthenticated
+platform endpoint — no `client_id`/`client_secret` involved, usable for any Organization by its
+own slug, not just your own configured one. It returns only `name`/`logo_url`/`home_url` for
+Applications that Organization has opted into public listing — a pure "what can I launch" list,
+never a way to start a sign-in flow.
+
+```python
+apps = client.get_public_applications(org_slug="onehux")
+# [PublicApplication(name="ODS", logo_url="https://...", home_url="https://...")]
+```
+
+Rendering is entirely up to you — this package ships the data method only, no template or
+component. A plain, unstyled illustration (adapt this to your own design, don't copy it as-is):
+
+```html
+{% for app in public_applications %}
+  <a href="{{ app.home_url }}">
+    <img src="{{ app.logo_url }}" alt="{{ app.name }}">
+    {{ app.name }}
+  </a>
+{% endfor %}
+```
+
 ## Logging out — what actually happens, and how to hear about it immediately
 
 Two distinct logout paths reach the platform's identical underlying session-revocation call

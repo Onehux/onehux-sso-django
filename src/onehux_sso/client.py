@@ -26,6 +26,7 @@ from .conf import get_setting
 from .exceptions import (
     InvalidLogoutTokenError,
     InvalidStateError,
+    OrganizationNotFoundError,
     StepUpRequiredError,
     TokenExchangeError,
     TokenExpiredError,
@@ -46,6 +47,18 @@ class PendingAuthorization:
     code_verifier: str
     state: str
     authorization_url: str
+
+
+@dataclass(frozen=True)
+class PublicApplication:
+    """One entry from GET /api/v1/organizations/{slug}/public-applications/ — deliberately only
+    name/logo_url/home_url, matching exactly what that endpoint returns. No client_id, no slug,
+    no OAuth-relevant identifier: this is a pure "what can I launch" list, not a way to start a
+    sign-in flow."""
+
+    name: str
+    logo_url: str
+    home_url: str
 
 
 @dataclass(frozen=True)
@@ -264,6 +277,26 @@ class OneHuxClient:
         if not payload.get("sub") and not payload.get("sid"):
             raise InvalidLogoutTokenError("logout_token must contain a sub claim, a sid claim, or both.")
         return payload
+
+    def get_public_applications(self, *, org_slug: str) -> list[PublicApplication]:
+        """GET {API_BASE_URL}/api/v1/organizations/{org_slug}/public-applications/ — the
+        platform's public, unauthenticated application-launcher endpoint (README.md ADR-078).
+        No client_id/client_secret involved: this is a public, unauthenticated GET, usable for
+        any Organization by its own slug, not just this client's own configured one. Raises
+        OrganizationNotFoundError if org_slug doesn't match a usable Organization."""
+        response = requests.get(
+            f"{self.api_base_url}/api/v1/organizations/{org_slug}/public-applications/",
+            timeout=self.timeout,
+        )
+        if not response.ok:
+            body = response.json() if response.content else {}
+            raise OrganizationNotFoundError(
+                error_description=body.get("error_description", "Organization not found.")
+            )
+        return [
+            PublicApplication(name=item["name"], logo_url=item["logo_url"], home_url=item["home_url"])
+            for item in response.json()
+        ]
 
     def build_logout_url(self, *, state: str | None = None) -> str:
         """Build the RP-initiated logout redirect (README.md ADR-070, backend repo):

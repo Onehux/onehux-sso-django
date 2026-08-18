@@ -52,6 +52,16 @@ class StepUpRequiredError(OneHuxSSOError):
         super().__init__(error_description)
 
 
+class OrganizationNotFoundError(OneHuxSSOError):
+    """GET /api/v1/organizations/{slug}/public-applications/ returned 404 — no Organization
+    matches that slug, or it isn't usable (deactivated/deleted). Carries the real
+    error/error_description from the backend rather than a generic message."""
+
+    def __init__(self, *, error_description: str):
+        self.error_description = error_description
+        super().__init__(error_description)
+
+
 class InvalidLogoutTokenError(OneHuxSSOError):
     """An incoming POST to BackchannelLogoutView failed real OIDC Back-Channel Logout
     validation (spec: openid-connect-backchannel-1_0.html §2.6) — bad/missing signature, wrong
