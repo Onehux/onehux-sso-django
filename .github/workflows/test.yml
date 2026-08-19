@@ -17,6 +17,11 @@ jobs:
       matrix:
         python-version: ["3.11", "3.12", "3.13", "3.14"]
         django-version: ["5.2", "6.1"]
+        # Django 6.x requires Python >=3.12 — verified against the real error pip raises for
+        # this combination, not assumed. 5.2 LTS supports the full 3.11-3.14 range.
+        exclude:
+          - python-version: "3.11"
+            django-version: "6.1"
 
     steps:
       - uses: actions/checkout@v4
