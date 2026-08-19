@@ -181,5 +181,4 @@ browser flow against production, not just unit-tested in isolation.
 
 ## License
 
-MIT (see `LICENSE`) — a default choice, not yet a final decision; change before any public
-release if OneHux wants different terms.
+Apache License 2.0 — see `LICENSE`.

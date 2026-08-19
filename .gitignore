@@ -7,3 +7,4 @@ dist/
 venv/
 db.sqlite3
 .env
+.pytest_cache/

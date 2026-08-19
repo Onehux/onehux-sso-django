@@ -7,13 +7,16 @@ name = "onehux-sso"
 version = "0.1.0"
 description = "Django SDK for OneHux Accounts SSO (Authorization Code + PKCE, real hosted login page, RP-initiated logout)."
 readme = "README.md"
-license = { text = "MIT" }
+license = { text = "Apache-2.0" }
 requires-python = ">=3.10"
 dependencies = [
-    "Django>=4.2",
+    "Django>=5.2",
     "requests>=2.31",
     "PyJWT>=2.8",
 ]
+
+[project.optional-dependencies]
+test = ["pytest>=8.0"]
 
 [project.urls]
 Homepage = "https://accounts.onehux.com"
@@ -21,3 +24,6 @@ Documentation = "https://accounts.onehux.com/dashboard/docs/integrate/backend/dj
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

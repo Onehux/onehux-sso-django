@@ -1,0 +1,35 @@
+# .github/workflows/test.yml
+# Runs the real unit test suite (tests/test_client.py) against every currently-supported
+# Python × Django combination — not just lint/typecheck.
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+        django-version: ["5.2", "6.1"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install package + test dependencies
+        run: |
+          pip install -e ".[test]"
+          pip install "Django==${{ matrix.django-version }}.*"
+
+      - name: Run tests
+        run: pytest -v
