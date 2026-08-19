@@ -8,10 +8,10 @@ otherwise only shows as copy-paste example code.
 ## Install
 
 ```bash
-pip install -e /path/to/onehux_sso_client/django-package
+pip install onehux-sso
 ```
 
-(Not yet published to PyPI — install from source until that's decided.)
+[pypi.org/project/onehux-sso](https://pypi.org/project/onehux-sso/)
 
 ## Two hosts — don't mix them up
 
