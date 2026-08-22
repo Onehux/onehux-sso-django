@@ -4,6 +4,7 @@ general hosted login page. Formalizes what dashboard/docs/integrate/backend/djan
 guide otherwise only shows as copy-paste example code."""
 
 from .client import OneHuxClient
+from .decorators import OneHuxLoginRequiredMixin, onehux_login_required
 from .exceptions import (
     InvalidStateError,
     OneHuxSSOError,
@@ -11,7 +12,7 @@ from .exceptions import (
     TokenExpiredError,
 )
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 __all__ = [
     "OneHuxClient",
@@ -19,4 +20,6 @@ __all__ = [
     "InvalidStateError",
     "TokenExchangeError",
     "TokenExpiredError",
+    "onehux_login_required",
+    "OneHuxLoginRequiredMixin",
 ]

@@ -179,6 +179,61 @@ when the token has expired or been revoked — catch it and send the user back t
 `client.start_authorization()` for a fresh login. There is no silent-refresh path to fall back
 to; this package makes that explicit rather than hiding it behind a generic error.
 
+## Protecting your own views — `onehux_login_required` / `OneHuxLoginRequiredMixin`
+
+`UserInfoView` and this package's own example app both catch `TokenExpiredError` themselves,
+but if you're wiring up your own protected views (as the "Using the client directly" section
+above shows), you have to catch it yourself every single time — miss it once and an expired
+token becomes an unhandled exception (a real 500) instead of a clean redirect back to sign-in.
+
+`onehux_login_required` (function views) and `OneHuxLoginRequiredMixin` (class-based views)
+close that gap: both redirect to `/auth/login/?next=<original path>` if there's no access
+token in the session yet, **and** catch `TokenExpiredError` raised anywhere during the view's
+execution — clearing the now-dead token from the session first, so a retried request doesn't
+immediately hit the same expired token again.
+
+```python
+from onehux_sso import OneHuxClient, onehux_login_required
+from onehux_sso.conf import get_setting
+
+@onehux_login_required
+def dashboard(request):
+    client = OneHuxClient.from_settings()
+    access_token = request.session[get_setting("SESSION_ACCESS_TOKEN_KEY")]
+    claims = client.get_userinfo(access_token=access_token)  # TokenExpiredError -> redirect, not a 500
+    ...
+```
+
+```python
+from django.views import View
+from onehux_sso import OneHuxClient, OneHuxLoginRequiredMixin
+from onehux_sso.conf import get_setting
+
+class DashboardView(OneHuxLoginRequiredMixin, View):  # mixin first, before View
+    def get(self, request):
+        client = OneHuxClient.from_settings()
+        access_token = request.session[get_setting("SESSION_ACCESS_TOKEN_KEY")]
+        claims = client.get_userinfo(access_token=access_token)
+        ...
+```
+
+## Your Django session cookie lifetime vs. the 15-minute access token
+
+This package never sets `SESSION_COOKIE_AGE` — it relies entirely on whatever your own Django
+project has configured (Django's own default is 2 weeks). That's deliberate: session cookie
+lifetime is your project's own call to make, not something an SSO client should override out
+from under you. But it does mean the two lifetimes are **not** connected: a visitor's Django
+session cookie can easily outlive their 15-minute OneHux access token by orders of magnitude.
+**A long-lived session cookie does not mean a long-lived valid token** — the cookie only
+controls how long the *session* (and whatever stale access token it's holding) sticks around
+in the browser; it says nothing about whether that access token still works. Don't build any
+logic that assumes "the user has a session cookie" implies "the user has a valid access
+token" — always call `client.get_userinfo()` (directly, or via `onehux_login_required`/
+`OneHuxLoginRequiredMixin` above) to find out, and treat `TokenExpiredError` as the real
+source of truth. That redirect-on-expiry path, not a short cookie lifetime, is what actually
+keeps a user from sitting on a dead token — shortening `SESSION_COOKIE_AGE` alone doesn't fix
+an app that never checks token validity in the first place.
+
 ## Example project
 
 See `example/` for a complete, runnable Django project using this package end-to-end —
