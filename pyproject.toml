@@ -28,3 +28,8 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 DJANGO_SETTINGS_MODULE = "tests.django_settings"
+# Needed so "tests.django_settings" resolves when pytest is invoked directly (`pytest -v`, as
+# CI does) rather than via `python -m pytest` (which auto-adds cwd to sys.path) — pytest's own
+# pythonpath plugin runs early enough (before pytest-django imports DJANGO_SETTINGS_MODULE) to
+# make this work either way.
+pythonpath = ["."]
